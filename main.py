@@ -7,6 +7,7 @@ back-and-forth waypoint selection, dead-end retreat, and coverage holes via TSP.
 
 import math
 import random
+import json
 import networkx as nx
 from shapely.geometry import Polygon, Point, LineString, MultiLineString, GeometryCollection
 from shapely.ops import unary_union
@@ -414,14 +415,27 @@ def C_star_coverage(env_poly, obstacles, start_pos, sensor_range=5.0, cover_radi
     return path, G, env_free
 
 # --- Ví dụ sử dụng và minh họa ---
+
+def load_case_from_json(file_path):
+    """
+    Đọc một testcase từ file JSON.
+    Trả về:
+        - env: shapely Polygon môi trường
+        - obstacles: list các shapely Polygon chướng ngại
+        - start: tuple (x,y) vị trí bắt đầu
+    """
+    with open(file_path, 'r') as f:
+        data = json.load(f)
+
+    env = Polygon(data['environment'])
+    obstacles = [Polygon(coords) for coords in data.get('obstacles', [])]
+    start = tuple(data['start'])
+
+    return env, obstacles, start
+
 if __name__ == "__main__":
     # Định nghĩa môi trường và obstacles
-    env = Polygon([(0,0),(0,50),(50,50),(50,0)])
-    obs1 = Polygon([(10,10),(10,20),(20,20),(20,10)])
-    obs2 = Polygon([(30,30),(30,40),(40,40),(40,30)])
-    obs3 = Polygon([(5,30),(5,35),(15,35),(15,30)])
-    obstacles = [obs1, obs2, obs3]
-    start = (5, 5)
+    env, obstacles, start = load_case_from_json("testcase_1.json")
     # Chạy thuật toán C*
     path, G, env_free = C_star_coverage(env, obstacles, start_pos=start,
                                        sensor_range=7.0, cover_radius=1.5, d_s=5.0,
