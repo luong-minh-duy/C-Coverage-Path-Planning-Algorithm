@@ -11,77 +11,69 @@ def select_goal_node(G, current_node, d_s):
     Chọn node kế tiếp theo thứ tự ưu tiên:
     Left lap (L), Up (U), Down (D), Right lap (R).
     Trả về (goal_node, is_retreat_flag).
-    Nếu dead-end, chọn retreat node (open node gần nhất).
+    Nếu dead-end, chọn retreat node (open node gần nhất có trong G).
     Nếu hết open node, trả về (None, False).
     """
-    # Lấy các node open
-    open_nodes = [n for n,d in G.nodes(data=True) if d['state']=='open']
+    def safe_node(n):
+        return n in G and G.nodes[n].get('state') == 'open'
+
+    # Lấy các node open thực sự có trong G
+    open_nodes = [n for n in G.nodes if G.nodes[n].get('state') == 'open']
     if current_node is None:
-        # Nếu chưa có node hiện tại, pick bất kỳ open
         if not open_nodes:
             return (None, False)
         return (open_nodes[0], False)
+
     x0, y0 = current_node
-    # Lập dict lap
     nodes_by_x = {}
     for n in open_nodes:
-        nodes_by_x.setdefault(round(n[0],6), []).append(n)
-    # Lấy node cùng lap hiện tại
+        nodes_by_x.setdefault(round(n[0], 6), []).append(n)
+
+    # Lấy node cùng lap
     curr_lap_nodes = []
-    if round(x0,6) in nodes_by_x:
-        curr_lap_nodes = sorted(nodes_by_x[round(x0,6)], key=lambda n: n[1])
-    up_node = None; down_node = None
+    if round(x0, 6) in nodes_by_x:
+        curr_lap_nodes = sorted(nodes_by_x[round(x0, 6)], key=lambda n: n[1])
+
+    up_node = None
+    down_node = None
     if curr_lap_nodes:
         try:
             idx = curr_lap_nodes.index(current_node)
         except ValueError:
-            # Nếu current đã đóng, lấy neighbors từ graph
-            curr_all = sorted([n for n in G.nodes if round(n[0],6)==round(x0,6)], key=lambda n:n[1])
+            curr_all = sorted([n for n in G.nodes if round(n[0], 6) == round(x0, 6)], key=lambda n: n[1])
             try:
                 idx = curr_all.index(current_node)
-                if idx < len(curr_all)-1:
-                    up_node = curr_all[idx+1]
+                if idx < len(curr_all) - 1:
+                    up_node = curr_all[idx + 1]
                 if idx > 0:
-                    down_node = curr_all[idx-1]
+                    down_node = curr_all[idx - 1]
             except ValueError:
-                idx = None
+                pass
         else:
-            if idx is not None:
-                if idx < len(curr_lap_nodes)-1:
-                    up_node = curr_lap_nodes[idx+1]
-                if idx > 0:
-                    down_node = curr_lap_nodes[idx-1]
-    # Lấy nodes lap trái và phải
-    left_x = round(x0 - d_s, 6)
-    left_nodes = nodes_by_x.get(left_x, [])
-    right_x = round(x0 + d_s, 6)
-    right_nodes = nodes_by_x.get(right_x, [])
-    # Ưu tiên L
-    if left_nodes:
-        return (random.choice(left_nodes), False)
-    # Tiếp U, D
-    if up_node and G.nodes[up_node]['state']=='open':
-        return (up_node, False)
-    if down_node and G.nodes[down_node]['state']=='open':
-        return (down_node, False)
-    # Tiếp R
-    if right_nodes:
-        return (random.choice(right_nodes), False)
-    # Dead-end: tìm retreat
-    if open_nodes:
-        # Loại trừ current_node nếu nó còn mở
-        candidates = [n for n in open_nodes if n != current_node]
-        if not candidates:
-            return (None, False)
-        curr_x, curr_y = current_node
-        nearest = None; min_dist = float('inf')
-        for n in candidates:
-            dist = math.hypot(curr_x - n[0], curr_y - n[1])
-            if dist < min_dist:
-                min_dist = dist; nearest = n
-        return (nearest, True)
-    # Hết open nodes: hoàn tất
+            if idx < len(curr_lap_nodes) - 1:
+                up_node = curr_lap_nodes[idx + 1]
+            if idx > 0:
+                down_node = curr_lap_nodes[idx - 1]
+
+    # Lap trái và phải
+    left_nodes = nodes_by_x.get(round(x0 - d_s, 6), [])
+    right_nodes = nodes_by_x.get(round(x0 + d_s, 6), [])
+
+    # Ưu tiên chọn theo L, U, D, R nếu tồn tại trong G
+    for group in [left_nodes, [up_node], [down_node], right_nodes]:
+        for candidate in group:
+            if candidate and safe_node(candidate):
+                return (candidate, False)
+
+    # Retreat
+    retreat_candidates = [n for n in open_nodes if n != current_node]
+    if retreat_candidates:
+        nearest = min(retreat_candidates, key=lambda n: math.hypot(n[0] - x0, n[1] - y0))
+        if nearest in G:
+            return (nearest, True)
+
     return (None, False)
+
 
 def solve_tsp(points, start=None):
     """
