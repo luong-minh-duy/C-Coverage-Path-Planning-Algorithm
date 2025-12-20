@@ -22,7 +22,6 @@ def test_sense_outside_free_area():
     range_sensor = 2.0
 
     result = sense_environment(current_pos, next_pos, range_sensor, env_free)
-    print("result: " + str(result.area))
     
     # Kết quả phải là phần giao giữa buffer và env_free
     assert result.area > 0

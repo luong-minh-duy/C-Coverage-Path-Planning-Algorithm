@@ -8,10 +8,10 @@ back-and-forth waypoint selection, dead-end retreat, and coverage holes via TSP.
 import math
 import random
 import json
-import networkx as nx
-from shapely.geometry import Polygon, Point, LineString, MultiLineString, GeometryCollection
-from shapely.ops import unary_union
-import matplotlib.pyplot as plt
+import networkx as nx 
+from shapely.geometry import Polygon, Point, LineString, MultiLineString, GeometryCollection 
+from shapely.ops import unary_union 
+import matplotlib.pyplot as plt 
 from sampler import generate_laps_and_samples
 from sensor import sense_environment
 from coverage_tracker import update_discovered
