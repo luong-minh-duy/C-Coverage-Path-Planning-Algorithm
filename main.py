@@ -4,7 +4,9 @@ import json
 import networkx as nx 
 from shapely.geometry import Polygon, Point, LineString, MultiLineString, GeometryCollection 
 from shapely.ops import unary_union 
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import time 
 from sampler import generate_laps_and_samples
 from sensor import sense_environment
 from coverage_tracker import update_discovered
@@ -13,12 +15,24 @@ from rcg import build_RCG, prune_RCG
 from planner import select_goal_node, solve_tsp
 
 def is_valid_edge(p1, p2, obstacles):
-    """Kiểm tra đoạn thẳng p1-p2 có giao với obstacle nào không."""
     line = LineString([p1, p2])
     for obs in obstacles:
         if line.crosses(obs) or line.within(obs) or line.intersects(obs):
             return False
     return True
+
+def move_and_scan(path, target, sensor_range, env_free, discovered, step_size=1.0):
+    current = path[-1]
+    line = LineString([current, target])
+    num_steps = max(int(line.length // step_size), 1)
+    for i in range(1, num_steps + 1):
+        x = current[0] + (target[0] - current[0]) * i / num_steps
+        y = current[1] + (target[1] - current[1]) * i / num_steps
+        intermediate = (x, y)
+        scan = sense_environment(path[-1], intermediate, sensor_range, env_free)
+        discovered = update_discovered(discovered, scan)
+        path.append(intermediate)
+    return path, discovered
 
 def C_star_coverage(env_poly, obstacles, start_pos, sensor_range=5.0, cover_radius=1.0, d_s=2.0, max_iters=1000, verbose=False):
     env_free = env_poly
@@ -68,9 +82,7 @@ def C_star_coverage(env_poly, obstacles, start_pos, sensor_range=5.0, cover_radi
             for n in route[1:]:
                 pos_next = (n[0], n[1])
                 if is_valid_edge(path[-1], pos_next, obstacles):
-                    new_scan = sense_environment(path[-1], pos_next, sensor_range, env_free)
-                    discovered = update_discovered(discovered, new_scan)
-                    path.append(pos_next)
+                    path, discovered = move_and_scan(path, pos_next, sensor_range, env_free, discovered)
                 else:
                     if verbose:
                         print(f"Retreat blocked from {path[-1]} to {pos_next}, marking as closed")
@@ -82,9 +94,7 @@ def C_star_coverage(env_poly, obstacles, start_pos, sensor_range=5.0, cover_radi
 
         pos_next = goal_node
         if is_valid_edge(path[-1], pos_next, obstacles):
-            new_scan = sense_environment(path[-1], pos_next, sensor_range, env_free)
-            discovered = update_discovered(discovered, new_scan)
-            path.append(pos_next)
+            path, discovered = move_and_scan(path, pos_next, sensor_range, env_free, discovered)
             current_node = goal_node
             if current_node in G.nodes:
                 G.nodes[current_node]['state'] = 'closed'
@@ -120,9 +130,7 @@ def C_star_coverage(env_poly, obstacles, start_pos, sensor_range=5.0, cover_radi
             print(f"TSP hole path: {tsp_path}")
         for next_pt in tsp_path:
             if is_valid_edge(path[-1], next_pt, obstacles):
-                new_scan = sense_environment(path[-1], next_pt, sensor_range, env_free)
-                discovered = update_discovered(discovered, new_scan)
-                path.append(next_pt)
+                path, discovered = move_and_scan(path, next_pt, sensor_range, env_free, discovered)
                 coord = (round(next_pt[0],6), round(next_pt[1],6))
                 if coord in G.nodes:
                     G.nodes[coord]['state'] = 'closed'
@@ -133,7 +141,6 @@ def C_star_coverage(env_poly, obstacles, start_pos, sensor_range=5.0, cover_radi
                 if coord in G.nodes:
                     G.nodes[coord]['state'] = 'closed'
     return path, G, env_free
-
 
 def load_case_from_json(file_path):
     with open(file_path, 'r') as f:
@@ -152,19 +159,29 @@ if __name__ == "__main__":
                                        verbose=True)
     print("Finished coverage. Path length:", len(path))
     fig, ax = plt.subplots(figsize=(6,6))
-    x,y = env.exterior.xy
+    x, y = env.exterior.xy
     ax.plot(x, y, color='black')
     for obs in obstacles:
         ox, oy = obs.exterior.xy
         ax.fill(ox, oy, color='gray', alpha=0.7)
-    px = [p[0] for p in path]; py = [p[1] for p in path]
-    ax.plot(px, py, '-o', color='blue', markersize=3)
+
     nx_nodes = list(G.nodes())
     nx_x = [n[0] for n in nx_nodes]
     nx_y = [n[1] for n in nx_nodes]
     ax.scatter(nx_x, nx_y, color='red', s=15)
-    for u,v in G.edges():
+    for u, v in G.edges():
         ax.plot([u[0], v[0]], [u[1], v[1]], color='red', linewidth=0.5)
-    ax.set_title("C* Coverage Path (blue) with RCG (red)")
-    ax.set_xlim(-5, 55); ax.set_ylim(-5, 55)
+
+    for i in range(1, len(path)):
+        x_prev, y_prev = path[i - 1]
+        x_curr, y_curr = path[i]
+        ax.plot([x_prev, x_curr], [y_prev, y_curr], color='blue', marker='o', markersize=3)
+        coverage_circle = patches.Circle((x_curr, y_curr), radius=1.5, color='cyan', alpha=0.2)
+        ax.add_patch(coverage_circle)
+        ax.set_title(f"C* Coverage Step {i}/{len(path)}")
+        plt.pause(0.05)
+
+    plt.title("Final Coverage Path (blue) with RCG (red)")
+    ax.set_xlim(-5, 55)
+    ax.set_ylim(-5, 55)
     plt.show()
