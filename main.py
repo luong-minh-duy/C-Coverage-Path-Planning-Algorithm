@@ -291,10 +291,6 @@ def C_star_coverage(
 
     return path, G, env_free, covered
 
-
-
-
-
 def load_case_from_json(file_path):
     with open(file_path, 'r') as f:
         data = json.load(f)
@@ -306,7 +302,7 @@ def load_case_from_json(file_path):
     return env, obstacles, start
 
 if __name__ == "__main__":
-    env, obstacles, start = load_case_from_json("testcase_1.json")
+    env, obstacles, start = load_case_from_json("testcase_4.json")
     path, G, env_free, covered = C_star_coverage(env, obstacles, start_pos=start,
                                        sensor_range=5.0, cover_radius=1.5, d_s=5.0,
                                        verbose=True)
