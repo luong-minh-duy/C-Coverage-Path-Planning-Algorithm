@@ -1,8 +1,12 @@
 def get_sampling_front(discovered_old, discovered_new):
     """
-    Tính vùng sampling front: phần mới được phát hiện (discovered_new - discovered_old).
+    Sampling front = biên của vùng đã phát hiện
     """
-    if discovered_old is None:
+    if discovered_new is None or discovered_new.is_empty:
         return discovered_new
-    else:
-        return discovered_new.difference(discovered_old)
+
+    # lấy biên của vùng đã biết
+    front = discovered_new.boundary
+
+    # buffer mỏng để thành polygon (vì boundary là LineString)
+    return front.buffer(1e-3)

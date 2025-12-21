@@ -6,71 +6,102 @@ from shapely.geometry import Polygon, Point, LineString, MultiLineString, Geomet
 from shapely.ops import unary_union
 import matplotlib.pyplot as plt
 
-def select_goal_node(G, current_node, d_s):
+def select_goal_node(G, current_node, prev_node, d_s):
     """
-    Chọn node kế tiếp theo thứ tự ưu tiên:
-    Left lap (L), Up (U), Down (D), Right lap (R).
-    Trả về (goal_node, is_retreat_flag).
-    Nếu dead-end, chọn retreat node (open node gần nhất có trong G).
-    Nếu hết open node, trả về (None, False).
+    Waypoint selection theo C* (đã chống dao động):
+    - Ưu tiên: Left lap → Up → Down → Right lap
+    - Không quay lại prev_node
+    - Retreat: graph-based, ưu tiên khác lap
     """
-    def safe_node(n):
+
+    def is_open(n):
         return n in G and G.nodes[n].get('state') == 'open'
 
-    # Lấy các node open thực sự có trong G
-    open_nodes = [n for n in G.nodes if G.nodes[n].get('state') == 'open']
-    if current_node is None:
-        if not open_nodes:
-            return (None, False)
+    # -----------------------------
+    # Open nodes (loại prev_node)
+    # -----------------------------
+    open_nodes = [
+        n for n in G.nodes
+        if is_open(n) and n != prev_node
+    ]
+
+    if not open_nodes:
+        return (None, False)
+
+    if current_node is None or current_node not in G:
         return (open_nodes[0], False)
 
-    x0, y0 = current_node
-    nodes_by_x = {}
-    for n in open_nodes:
-        nodes_by_x.setdefault(round(n[0], 6), []).append(n)
+    curr_lap = G.nodes[current_node].get('lap_id')
 
-    # Lấy node cùng lap
-    curr_lap_nodes = []
-    if round(x0, 6) in nodes_by_x:
-        curr_lap_nodes = sorted(nodes_by_x[round(x0, 6)], key=lambda n: n[1])
+    # -----------------------------
+    # 1. Same lap: Up / Down
+    # -----------------------------
+    same_lap = [
+        n for n in open_nodes
+        if G.nodes[n].get('lap_id') == curr_lap
+    ]
+    same_lap_sorted = sorted(same_lap, key=lambda n: n[1])
 
-    up_node = None
-    down_node = None
-    if curr_lap_nodes:
-        try:
-            idx = curr_lap_nodes.index(current_node)
-        except ValueError:
-            curr_all = sorted([n for n in G.nodes if round(n[0], 6) == round(x0, 6)], key=lambda n: n[1])
-            try:
-                idx = curr_all.index(current_node)
-                if idx < len(curr_all) - 1:
-                    up_node = curr_all[idx + 1]
-                if idx > 0:
-                    down_node = curr_all[idx - 1]
-            except ValueError:
-                pass
-        else:
-            if idx < len(curr_lap_nodes) - 1:
-                up_node = curr_lap_nodes[idx + 1]
-            if idx > 0:
-                down_node = curr_lap_nodes[idx - 1]
+    up_node = down_node = None
+    if current_node in same_lap_sorted:
+        idx = same_lap_sorted.index(current_node)
+        if idx + 1 < len(same_lap_sorted):
+            up_node = same_lap_sorted[idx + 1]
+        if idx - 1 >= 0:
+            down_node = same_lap_sorted[idx - 1]
 
-    # Lap trái và phải
-    left_nodes = nodes_by_x.get(round(x0 - d_s, 6), [])
-    right_nodes = nodes_by_x.get(round(x0 + d_s, 6), [])
+    # -----------------------------
+    # 2. Left / Right lap
+    # -----------------------------
+    left_lap = curr_lap - 1 if curr_lap is not None else None
+    right_lap = curr_lap + 1 if curr_lap is not None else None
 
-    # Ưu tiên chọn theo L, U, D, R nếu tồn tại trong G
-    for group in [left_nodes, [up_node], [down_node], right_nodes]:
-        for candidate in group:
-            if candidate and safe_node(candidate):
-                return (candidate, False)
+    left_nodes = [
+        n for n in open_nodes
+        if G.nodes[n].get('lap_id') == left_lap
+    ]
+    right_nodes = [
+        n for n in open_nodes
+        if G.nodes[n].get('lap_id') == right_lap
+    ]
 
-    # Retreat
-    retreat_candidates = [n for n in open_nodes if n != current_node]
+    # Thứ tự ưu tiên đúng paper
+    priority_groups = [
+        left_nodes,
+        [up_node],
+        [down_node],
+        right_nodes
+    ]
+
+    for group in priority_groups:
+        for n in group:
+            if n is not None and is_open(n):
+                return (n, False)
+
+    # -----------------------------
+    # 3. Retreat (graph-based, khác lap)
+    # -----------------------------
+    retreat_candidates = [
+        n for n in open_nodes if n != current_node
+    ]
+
+    # Ưu tiên retreat sang lap khác
+    diff_lap = [
+        n for n in retreat_candidates
+        if G.nodes[n].get('lap_id') != curr_lap
+    ]
+    if diff_lap:
+        retreat_candidates = diff_lap
+
     if retreat_candidates:
-        nearest = min(retreat_candidates, key=lambda n: math.hypot(n[0] - x0, n[1] - y0))
-        if nearest in G:
+        try:
+            nearest = min(
+                retreat_candidates,
+                key=lambda n: nx.shortest_path_length(G, current_node, n)
+            )
             return (nearest, True)
+        except nx.NetworkXNoPath:
+            pass
 
     return (None, False)
 
