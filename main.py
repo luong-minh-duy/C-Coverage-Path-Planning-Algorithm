@@ -361,4 +361,5 @@ if __name__ == "__main__":
     ax.set_xlim(-5, 55)
     ax.set_ylim(-5, 55)
     plt.show()
+    print("Visualization complete.")
 
